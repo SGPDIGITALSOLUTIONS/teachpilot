@@ -48,9 +48,9 @@ export async function POST(request: NextRequest) {
     const topics = topicsResult.rows;
     const topicIds = topics.map((t: any) => t.id);
 
-    // Fetch all revision materials for all topics in this subject
+    // Fetch all revision materials for all topics in this subject (including file_data)
     const materialsResult = await pool.query(
-      'SELECT * FROM revision_materials WHERE topic_id = ANY($1::int[]) ORDER BY topic_id, uploaded_at ASC',
+      'SELECT id, topic_id, content, title, file_data, file_name, file_type FROM revision_materials WHERE topic_id = ANY($1::int[]) ORDER BY topic_id, uploaded_at ASC',
       [topicIds]
     );
 
@@ -63,10 +63,48 @@ export async function POST(request: NextRequest) {
 
     const materials = materialsResult.rows;
 
-    // Combine all material content
+    // Extract content from materials - use OpenAI if content is missing
+    const materialContents = await Promise.all(
+      materials.map(async (material: any) => {
+        let content = material.content;
+        
+        // If content is missing but file_data exists, extract with OpenAI
+        if (!content && material.file_data) {
+          try {
+            const { extractTextWithOpenAI } = await import('@/lib/openai-file-parser');
+            const fileBuffer = Buffer.from(material.file_data);
+            content = await extractTextWithOpenAI(
+              fileBuffer,
+              material.file_name || 'document',
+              material.file_type || 'pdf'
+            );
+            
+            // Update the material with extracted content
+            if (content) {
+              await pool.query(
+                'UPDATE revision_materials SET content = $1 WHERE id = $2',
+                [content, material.id]
+              );
+            }
+          } catch (error: any) {
+            console.error(`Failed to extract content for material ${material.id}:`, error);
+            content = `[Content extraction failed for ${material.file_name || 'this file'}]`;
+          }
+        }
+        
+        const topic = topics.find((t: any) => t.id === material.topic_id);
+        return {
+          topicName: topic?.name || 'Unknown',
+          title: material.title,
+          content: content || '[No content available]'
+        };
+      })
+    );
+    
+    // Organize by topic
     let combinedContent = '';
     topics.forEach((topic: any) => {
-      const topicMaterials = materials.filter((m: any) => m.topic_id === topic.id);
+      const topicMaterials = materialContents.filter((m: any) => m.topicName === topic.name);
       if (topicMaterials.length > 0) {
         combinedContent += `\n\n=== TOPIC: ${topic.name} ===\n`;
         topicMaterials.forEach((m: any) => {

@@ -47,10 +47,40 @@ export async function POST(request: NextRequest) {
 
     const materials = materialsResult.rows;
 
-    // Combine all material content
-    const combinedContent = materials.map((m: any, index: number) => 
-      `--- Material ${index + 1}: ${m.title} ---\n${m.content}\n`
-    ).join('\n\n');
+    // Extract content from materials - use OpenAI if content is missing
+    const materialContents = await Promise.all(
+      materials.map(async (material: any) => {
+        let content = material.content;
+        
+        // If content is missing but file_data exists, extract with OpenAI
+        if (!content && material.file_data) {
+          try {
+            const { extractTextWithOpenAI } = await import('@/lib/openai-file-parser');
+            const fileBuffer = Buffer.from(material.file_data);
+            content = await extractTextWithOpenAI(
+              fileBuffer,
+              material.file_name || 'document',
+              material.file_type || 'pdf'
+            );
+            
+            // Update the material with extracted content
+            if (content) {
+              await pool.query(
+                'UPDATE revision_materials SET content = $1 WHERE id = $2',
+                [content, material.id]
+              );
+            }
+          } catch (error: any) {
+            console.error(`Failed to extract content for material ${material.id}:`, error);
+            content = `[Content extraction failed for ${material.file_name || 'this file'}]`;
+          }
+        }
+        
+        return `--- Material: ${material.title} ---\n${content || '[No content available]'}`;
+      })
+    );
+    
+    const combinedContent = materialContents.join('\n\n');
 
     // Generate combined revision material using OpenAI
     const completion = await openai.chat.completions.create({

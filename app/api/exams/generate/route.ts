@@ -31,11 +31,63 @@ export async function POST(request: NextRequest) {
     }
 
     const material = materialResult.rows[0];
-    const materialContent = material.content;
-
+    
+    // Get content - use existing content if available
+    let materialContent = material.content;
+    
+    // If content is missing, try to extract from file_data
+    if ((!materialContent || materialContent.trim().length === 0) && material.file_data) {
+      try {
+        const { extractTextFromFile } = await import('@/lib/file-processor');
+        const fileBuffer = Buffer.from(material.file_data);
+        const blob = new Blob([fileBuffer]);
+        const file = new File([blob], material.file_name || 'document', { 
+          type: material.file_type || 'application/octet-stream' 
+        });
+        
+        try {
+          const result = await extractTextFromFile(file, material.file_name);
+          materialContent = result.content;
+          
+          if (materialContent && materialContent.trim().length > 0) {
+            await pool.query(
+              'UPDATE revision_materials SET content = $1 WHERE id = $2',
+              [materialContent, material_id]
+            );
+          }
+        } catch (localError: any) {
+          console.log('Local parsing failed, trying OpenAI:', localError.message);
+          try {
+            const { extractTextWithOpenAI } = await import('@/lib/openai-file-parser');
+            materialContent = await extractTextWithOpenAI(
+              fileBuffer,
+              material.file_name || 'document',
+              material.file_type || 'pdf'
+            );
+            
+            if (materialContent && materialContent.trim().length > 0) {
+              await pool.query(
+                'UPDATE revision_materials SET content = $1 WHERE id = $2',
+                [materialContent, material_id]
+              );
+            }
+          } catch (openaiError: any) {
+            console.error('Both local and OpenAI parsing failed:', openaiError.message);
+            materialContent = materialContent || '';
+          }
+        }
+      } catch (error: any) {
+        console.error('File parsing error:', error);
+        materialContent = materialContent || '';
+      }
+    }
+    
     if (!materialContent || materialContent.trim().length === 0) {
       return NextResponse.json(
-        { success: false, message: 'Material content is empty. Please ensure the material has content.' },
+        { 
+          success: false, 
+          message: 'Material content is empty. Please ensure the material has readable text, or try uploading the content as text instead.' 
+        },
         { status: 400 }
       );
     }

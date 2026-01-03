@@ -45,28 +45,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let extractedContent: string;
+    let extractedContent: string | null = null;
     let fileType: string;
     let fileName: string | null = null;
+    let fileData: Buffer | null = null;
 
     if (file && file.size > 0) {
-      // File upload mode
+      // File upload mode - save the file and optionally extract text
+      fileName = file.name;
+      const arrayBuffer = await file.arrayBuffer();
+      fileData = Buffer.from(arrayBuffer);
+      
+      // Determine file type from extension
+      const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
+      fileType = fileExtension;
+      
+      // Try to extract text for preview, but don't fail if it doesn't work
+      // The actual parsing will happen via OpenAI when revision/exam is requested
       try {
         const result = await extractTextFromFile(file);
         extractedContent = result.content;
         fileType = result.fileType;
-        fileName = file.name;
       } catch (error: any) {
-        console.error('File processing error:', error);
-        return NextResponse.json(
-          { success: false, message: error.message || 'Failed to process file' },
-          { status: 400 }
-        );
+        console.log('Text extraction failed, but saving file for OpenAI parsing later:', error.message);
+        // Continue - we'll save the file and use OpenAI to parse it later
+        extractedContent = null;
       }
     } else if (content) {
       // Text input mode
       extractedContent = content;
       fileType = 'text';
+      fileData = null;
     } else {
       return NextResponse.json(
         { success: false, message: 'Either file or content is required' },
@@ -74,18 +83,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!extractedContent || extractedContent.trim().length === 0) {
-      return NextResponse.json(
-        { success: false, message: 'No content extracted from file. Please ensure the file contains text.' },
-        { status: 400 }
-      );
-    }
-
+    // Save the material - content may be null if file parsing failed (will use OpenAI later)
     const result = await pool.query(
-      `INSERT INTO revision_materials (topic_id, title, content, file_name, file_type)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO revision_materials (topic_id, title, content, file_data, file_name, file_type)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [parseInt(topicId as string), title as string, extractedContent, fileName, fileType]
+      [
+        parseInt(topicId as string), 
+        title as string, 
+        extractedContent, 
+        fileData, 
+        fileName, 
+        fileType
+      ]
     );
 
     return NextResponse.json({ success: true, data: result.rows[0] });

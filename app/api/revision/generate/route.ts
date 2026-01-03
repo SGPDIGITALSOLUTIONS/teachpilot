@@ -31,7 +31,73 @@ export async function POST(request: NextRequest) {
     }
 
     const material = materialResult.rows[0];
-    const materialContent = material.content;
+    
+    // Get content - use existing content if available
+    let materialContent = material.content;
+    
+    // If content is missing, try to extract from file_data using OpenAI
+    // But only if file_data exists and content is truly empty/null
+    if ((!materialContent || materialContent.trim().length === 0) && material.file_data) {
+      try {
+        const { extractTextFromFile } = await import('@/lib/file-processor');
+        // Try local parsing first (it might work now even if it failed before)
+        const fileBuffer = Buffer.from(material.file_data);
+        const blob = new Blob([fileBuffer]);
+        const file = new File([blob], material.file_name || 'document', { 
+          type: material.file_type || 'application/octet-stream' 
+        });
+        
+        try {
+          const result = await extractTextFromFile(file, material.file_name);
+          materialContent = result.content;
+          
+          // Update the material with extracted content for future use
+          if (materialContent && materialContent.trim().length > 0) {
+            await pool.query(
+              'UPDATE revision_materials SET content = $1 WHERE id = $2',
+              [materialContent, material_id]
+            );
+          }
+        } catch (localError: any) {
+          // Local parsing failed, try OpenAI as fallback
+          console.log('Local parsing failed, trying OpenAI:', localError.message);
+          try {
+            const { extractTextWithOpenAI } = await import('@/lib/openai-file-parser');
+            materialContent = await extractTextWithOpenAI(
+              fileBuffer,
+              material.file_name || 'document',
+              material.file_type || 'pdf'
+            );
+            
+            if (materialContent && materialContent.trim().length > 0) {
+              await pool.query(
+                'UPDATE revision_materials SET content = $1 WHERE id = $2',
+                [materialContent, material_id]
+              );
+            }
+          } catch (openaiError: any) {
+            console.error('Both local and OpenAI parsing failed:', openaiError.message);
+            // Don't fail completely - just use empty content and let OpenAI generate from what we have
+            materialContent = materialContent || '';
+          }
+        }
+      } catch (error: any) {
+        console.error('File parsing error:', error);
+        // Continue with whatever content we have (might be empty, but let OpenAI try)
+        materialContent = materialContent || '';
+      }
+    }
+    
+    // If we still don't have content, return an error
+    if (!materialContent || materialContent.trim().length === 0) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: 'No content available in the material. Please ensure the file contains readable text, or try uploading the content as text instead.' 
+        },
+        { status: 400 }
+      );
+    }
 
     // Generate revision summary using OpenAI
     const completion = await openai.chat.completions.create({

@@ -39,13 +39,35 @@ export async function extractTextFromFile(file: File | Blob, fileName?: string):
 
 async function extractTextFromPDF(buffer: Buffer): Promise<{ content: string; fileType: string }> {
   try {
+    // Use pdf-parse library (not OpenAI)
     const data = await pdfParse(buffer);
+    
+    const extractedText = data.text || '';
+    
+    if (!extractedText || extractedText.trim().length === 0) {
+      throw new Error('PDF appears to be empty or contains no extractable text. The PDF may be image-based or corrupted.');
+    }
+    
     return {
-      content: data.text,
+      content: extractedText,
       fileType: 'pdf',
     };
-  } catch (error) {
-    throw new Error(`Failed to parse PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  } catch (error: any) {
+    // Provide helpful error messages with suggestions
+    if (error.message?.includes('bad XRef entry') || error.message?.includes('XRef')) {
+      throw new Error('This PDF file has structural issues. The document may be fine, but the PDF parser is having trouble reading it. Please try: 1) Converting the PDF to DOCX format, 2) Copying and pasting the text content directly, or 3) Re-saving the PDF from the original source.');
+    }
+    if (error.message?.includes('password') || error.message?.includes('encrypted')) {
+      throw new Error('This PDF file is password-protected. Please remove the password protection before uploading.');
+    }
+    if (error.message?.includes('empty') || error.message?.includes('no extractable text')) {
+      throw new Error('This PDF file appears to be empty or contains no extractable text. It may be image-based - please copy the text manually or convert to DOCX format.');
+    }
+    if (error.message?.includes('Cannot find module')) {
+      throw new Error('PDF parsing library error. Please try uploading the file again or use the text input option to paste the content directly.');
+    }
+    
+    throw new Error(`Failed to parse PDF: ${error instanceof Error ? error.message : 'Unknown error'}. The document may be fine, but the parser is having issues. Please try converting to DOCX or pasting the text content directly.`);
   }
 }
 

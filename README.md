@@ -1,4 +1,4 @@
-# TeachPilot - Study & Exam Management App
+# TeachPilot - The Catherine Hudson Bespoke Revision Platform
 
 A comprehensive study management application for tracking revision sessions, exams, and academic progress. Built as a Progressive Web App (PWA) for optimal use on mobile devices and iPads.
 

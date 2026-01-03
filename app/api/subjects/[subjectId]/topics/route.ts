@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 
-export async function GET() {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { subjectId: string } }
+) {
   try {
-    const result = await pool.query('SELECT * FROM topics ORDER BY created_at DESC');
+    const subjectId = parseInt(params.subjectId);
+    const result = await pool.query(
+      'SELECT * FROM topics WHERE subject_id = $1 ORDER BY created_at DESC',
+      [subjectId]
+    );
     return NextResponse.json({ success: true, data: result.rows });
   } catch (error) {
     console.error('Database error:', error);
@@ -14,9 +21,13 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { subjectId: string } }
+) {
   try {
-    const { name, subject, description, color } = await request.json();
+    const subjectId = parseInt(params.subjectId);
+    const { name, description } = await request.json();
 
     if (!name) {
       return NextResponse.json(
@@ -26,10 +37,10 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await pool.query(
-      `INSERT INTO topics (name, subject, description, color)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO topics (subject_id, name, description)
+       VALUES ($1, $2, $3)
        RETURNING *`,
-      [name, subject || null, description || null, color || null]
+      [subjectId, name, description || null]
     );
 
     return NextResponse.json({ success: true, data: result.rows[0] });
@@ -41,4 +52,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
 

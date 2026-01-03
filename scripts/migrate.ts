@@ -1,21 +1,22 @@
+import 'dotenv/config';
 import pool from '../lib/db';
 
 const migrations = [
-  // Topics
-  `CREATE TABLE IF NOT EXISTS topics (
+  // Subjects (top-level categories)
+  `CREATE TABLE IF NOT EXISTS subjects (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    subject VARCHAR(100),
+    category VARCHAR(100),
     description TEXT,
     color VARCHAR(7),
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
   );`,
 
-  // Subtopics
-  `CREATE TABLE IF NOT EXISTS subtopics (
+  // Topics (sub-categories of subjects)
+  `CREATE TABLE IF NOT EXISTS topics (
     id SERIAL PRIMARY KEY,
-    topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
@@ -26,8 +27,8 @@ const migrations = [
   `CREATE TABLE IF NOT EXISTS tasks (
     id SERIAL PRIMARY KEY,
     task_type VARCHAR(50) NOT NULL,
+    subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
     topic_id INTEGER REFERENCES topics(id) ON DELETE SET NULL,
-    subtopic_id INTEGER REFERENCES subtopics(id) ON DELETE SET NULL,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     start_date DATE,
@@ -42,8 +43,8 @@ const migrations = [
   // Revision Sessions
   `CREATE TABLE IF NOT EXISTS revision_sessions (
     id SERIAL PRIMARY KEY,
+    subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
     topic_id INTEGER REFERENCES topics(id) ON DELETE SET NULL,
-    subtopic_id INTEGER REFERENCES subtopics(id) ON DELETE SET NULL,
     task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
     duration_minutes INTEGER NOT NULL,
     actual_duration_seconds INTEGER,
@@ -58,7 +59,6 @@ const migrations = [
   `CREATE TABLE IF NOT EXISTS revision_materials (
     id SERIAL PRIMARY KEY,
     topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-    subtopic_id INTEGER REFERENCES subtopics(id) ON DELETE SET NULL,
     title VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
     file_name VARCHAR(255),
@@ -73,7 +73,6 @@ const migrations = [
     id SERIAL PRIMARY KEY,
     revision_material_id INTEGER NOT NULL REFERENCES revision_materials(id) ON DELETE CASCADE,
     topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-    subtopic_id INTEGER REFERENCES subtopics(id) ON DELETE SET NULL,
     version_number INTEGER NOT NULL DEFAULT 1,
     title VARCHAR(255) NOT NULL,
     questions JSONB NOT NULL,
@@ -104,7 +103,6 @@ const migrations = [
   `CREATE TABLE IF NOT EXISTS confidence_tracking (
     id SERIAL PRIMARY KEY,
     topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-    subtopic_id INTEGER REFERENCES subtopics(id) ON DELETE SET NULL,
     exam_id INTEGER REFERENCES exams(id) ON DELETE SET NULL,
     exam_attempt_id INTEGER REFERENCES exam_attempts(id) ON DELETE SET NULL,
     confidence_level INTEGER NOT NULL,
@@ -117,8 +115,8 @@ const migrations = [
   // Performance Scores
   `CREATE TABLE IF NOT EXISTS performance_scores (
     id SERIAL PRIMARY KEY,
-    topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-    subtopic_id INTEGER REFERENCES subtopics(id) ON DELETE SET NULL,
+    subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
+    topic_id INTEGER REFERENCES topics(id) ON DELETE SET NULL,
     exam_id INTEGER REFERENCES exams(id) ON DELETE SET NULL,
     exam_attempt_id INTEGER REFERENCES exam_attempts(id) ON DELETE SET NULL,
     score INTEGER NOT NULL,
@@ -231,14 +229,15 @@ async function runMigrations() {
     
     for (const migration of migrations) {
       await client.query(migration);
-      console.log('Migration executed successfully');
+      console.log('✓ Migration executed successfully');
     }
     
     await client.query('COMMIT');
-    console.log('All migrations completed successfully');
-  } catch (error) {
+    console.log('\n✅ All migrations completed successfully!');
+    console.log('Tables created: subjects, topics, tasks, revision_sessions, revision_materials, exams, exam_attempts, confidence_tracking, performance_scores, rewards, user_rewards, study_streaks, parent_nominations, parent_users, parent_messages, study_boundaries, boundary_sessions');
+  } catch (error: any) {
     await client.query('ROLLBACK');
-    console.error('Migration failed:', error);
+    console.error('❌ Migration failed:', error.message);
     throw error;
   } finally {
     client.release();
@@ -246,5 +245,7 @@ async function runMigrations() {
   }
 }
 
-runMigrations();
-
+runMigrations().catch((error) => {
+  console.error('Fatal error:', error);
+  process.exit(1);
+});

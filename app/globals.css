@@ -54,6 +54,18 @@
   --ring: 0 0 0 4px rgba(14, 165, 233, 0.25);
 }
 
+/* PWA Install Prompt Animation */
+@keyframes slideUp {
+  from {
+    transform: translateX(-50%) translateY(100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 

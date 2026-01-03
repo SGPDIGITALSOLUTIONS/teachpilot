@@ -19,8 +19,7 @@ export default function Header({ showLogout = false }: HeaderProps) {
 
   const navLinks = [
     { href: '/dashboard', label: 'Dashboard' },
-    { href: '/topics', label: 'Topics' },
-    { href: '/tasks', label: 'Tasks' },
+    { href: '/subjects', label: 'Subjects' },
     { href: '/revision', label: 'Revision' },
     { href: '/exams', label: 'Exams' },
     { href: '/calendar', label: 'Calendar' },

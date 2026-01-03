@@ -16,7 +16,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { task_type, topic_id, subtopic_id, title, description, start_date, deadline, status, importance, notes } = await request.json();
+    const { task_type, subject_id, topic_id, title, description, start_date, deadline, status, importance, notes } = await request.json();
 
     if (!task_type || !title) {
       return NextResponse.json(
@@ -26,10 +26,10 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await pool.query(
-      `INSERT INTO tasks (task_type, topic_id, subtopic_id, title, description, start_date, deadline, status, importance, notes)
+      `INSERT INTO tasks (task_type, subject_id, topic_id, title, description, start_date, deadline, status, importance, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-      [task_type, topic_id || null, subtopic_id || null, title, description || null, start_date || null, deadline || null, status || 'pending', importance || 3, notes || null]
+      [task_type, subject_id || null, topic_id || null, title, description || null, start_date || null, deadline || null, status || 'pending', importance || 3, notes || null]
     );
 
     return NextResponse.json({ success: true, data: result.rows[0] });
@@ -41,4 +41,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
 

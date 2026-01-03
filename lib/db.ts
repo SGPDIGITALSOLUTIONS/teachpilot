@@ -1,8 +1,13 @@
 import { Pool } from 'pg';
 
 // Check if we're in a build context
+// More robust detection: check for Next.js build phase, or if we're in a build script
 const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
-                     process.env.NODE_ENV === 'production' && !process.env.VERCEL_ENV;
+                     (typeof process.env.NEXT_PHASE !== 'undefined' && process.env.NEXT_PHASE.includes('build')) ||
+                     (process.env.NODE_ENV === 'production' && 
+                      typeof window === 'undefined' && 
+                      !process.env.VERCEL_ENV && 
+                      (process.argv.includes('build') || process.argv.some(arg => arg.includes('next'))));
 
 // Support both DATABASE_URL and POSTGRES_URL for flexibility
 let pool: Pool | null = null;
